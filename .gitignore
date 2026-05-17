@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+.next/
+.npm/
+npm-debug.log*
+
+# Entorno — NUNCA comitear
+.env
+*.env
+
+# Logs
+*.log
+scraper.log
+scraper_err.log
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Tests temporales
+test_cotizacion.pdf
+
+# IDE
+.vscode/
+.idea/
