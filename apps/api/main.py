@@ -2,7 +2,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException, BackgroundTasks, Query, Depends
+from fastapi import FastAPI, File, Form, Request, UploadFile, HTTPException, BackgroundTasks, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -393,6 +393,90 @@ def get_cotizacion(cotizacion_id: str, db: Session = Depends(get_db)):
         "pais": cot.pais, "moneda": cot.moneda, "narrativa_ia": cot.narrativa_ia,
         "items": cot.items, "resultado": cot.resultado, "created_at": str(cot.created_at),
     }
+
+
+@app.get("/obra/{obra_id}/score-categoria")
+def score_por_categoria(
+    obra_id: str,
+    genera_ia: bool = Query(True, description="Genera narrativa IA (puede tardar ~2s más)"),
+    db: Session = Depends(get_db),
+):
+    """
+    Compara el monto de una obra contra la distribución percentílica de contratos
+    con la misma categoría y país. Retorna score de riesgo 0-100, percentil,
+    contratos similares cercanos en monto y narrativa IA explicativa.
+    """
+    try:
+        import uuid; uuid.UUID(obra_id)
+    except ValueError:
+        raise HTTPException(404, "Obra no encontrada")
+
+    from models import ObraPublica
+    obra = db.query(ObraPublica).filter_by(id=obra_id).first()
+    if not obra:
+        raise HTTPException(404, "Obra no encontrada")
+    if not obra.monto_adjudicado or float(obra.monto_adjudicado) <= 0:
+        raise HTTPException(422, "La obra no tiene monto adjudicado registrado")
+
+    from categoria_scoring import score_by_category
+    r = score_by_category(
+        db         = db,
+        obra_id    = obra_id,
+        monto      = float(obra.monto_adjudicado),
+        pais       = obra.pais,
+        categoria  = obra.categoria,
+        genera_ia  = genera_ia,
+    )
+
+    return {
+        "obra_id":        obra_id,
+        "score":          r.score,
+        "semaforo":       r.semaforo,
+        "percentil":      r.percentil,
+        "monto":          r.monto,
+        "mediana":        r.mediana,
+        "p10":            r.p10,
+        "p25":            r.p25,
+        "p75":            r.p75,
+        "p90":            r.p90,
+        "min_monto":      r.min_monto,
+        "max_monto":      r.max_monto,
+        "n_contratos":    r.n_contratos,
+        "sobreprecio_pct": r.sobreprecio_pct,
+        "categoria":      r.categoria,
+        "pais":           r.pais,
+        "alertas":        r.alertas,
+        "ejemplos":       r.ejemplos,
+        "narrativa_ia":   r.narrativa_ia,
+    }
+
+
+@app.post("/webhook/whatsapp")
+async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
+    """
+    Webhook que recibe mensajes desde Make.com (conectado a WhatsApp Business Cloud).
+
+    Payload esperado:
+      { "from": "+502...", "body": "texto", "type": "text|image",
+        "media_url": "https://...", "media_type": "image/jpeg" }
+
+    Respuesta:
+      { "reply": "texto para WhatsApp", "to": "+502..." }
+    """
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "JSON inválido o mal formado")
+
+    from whatsapp import handle_whatsapp_message
+    reply = await handle_whatsapp_message(
+        body       = payload.get("body") or payload.get("text"),
+        media_url  = payload.get("media_url"),
+        media_type = payload.get("media_type"),
+        sender     = payload.get("from", "unknown"),
+        db         = db,
+    )
+    return {"reply": reply, "to": payload.get("from")}
 
 
 @app.get("/admin/scrape/status")

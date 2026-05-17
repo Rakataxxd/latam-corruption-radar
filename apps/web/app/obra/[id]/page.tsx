@@ -197,6 +197,94 @@ function SemDot({ sem }: { sem: string }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ── Category score bar ───────────────────────────────────────────────────────
+function CategoryBar({ cat, moneda }: { cat: any; moneda: string }) {
+  const [anim, setAnim] = useState(false)
+  useEffect(() => { const t = setTimeout(() => setAnim(true), 200); return () => clearTimeout(t) }, [])
+
+  if (!cat || cat.semaforo === "sin_datos") return null
+
+  const { p10, p25, mediana, p75, p90, monto, min_monto, max_monto } = cat
+  const lo  = Math.min(min_monto, monto) * 0.9
+  const hi  = Math.max(max_monto, monto) * 1.05
+
+  const pct = (v: number) => Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100))
+
+  const markers = [
+    { val: p25,    label: "P25",    color: "#4ade80", y: 0 },
+    { val: mediana, label: "P50",   color: "#facc15", y: 1 },
+    { val: p75,    label: "P75",    color: "#fb923c", y: 0 },
+    { val: p90,    label: "P90",    color: "#f87171", y: 1 },
+  ]
+
+  const montoX   = pct(monto)
+  const sem       = cat.semaforo as string
+  const montoColor = sem === "rojo" ? "#f87171" : sem === "naranja" ? "#fb923c" : sem === "amarillo" ? "#facc15" : "#4ade80"
+  const fmt = (n: number) => n >= 1_000_000 ? `${moneda} ${(n/1_000_000).toFixed(1)}M` : `${moneda} ${Number(n).toLocaleString()}`
+
+  return (
+    <div className="space-y-3">
+      {/* Bar */}
+      <div className="relative h-10 rounded-full overflow-hidden bg-gray-800/60 border border-gray-700/40">
+        {/* Color zones */}
+        <div className="absolute inset-0 flex">
+          <div className="h-full bg-green-500/10"  style={{ width: `${pct(p25)}%` }}/>
+          <div className="h-full bg-yellow-500/10" style={{ width: `${pct(p75) - pct(p25)}%` }}/>
+          <div className="h-full bg-orange-500/10" style={{ width: `${pct(p90) - pct(p75)}%` }}/>
+          <div className="h-full bg-red-500/10 flex-1"/>
+        </div>
+
+        {/* Percentile tick lines */}
+        {markers.map(m => (
+          <div key={m.label}
+            className="absolute top-0 bottom-0 w-px opacity-60"
+            style={{ left: `${pct(m.val)}%`, background: m.color }}
+          />
+        ))}
+
+        {/* This contract marker */}
+        <div
+          className="absolute top-1 bottom-1 w-1 rounded-full shadow-lg transition-all duration-1000"
+          style={{
+            left:       `${anim ? montoX : 0}%`,
+            background: montoColor,
+            boxShadow:  `0 0 8px 2px ${montoColor}60`,
+            transform:  "translateX(-50%)",
+          }}
+        />
+      </div>
+
+      {/* Labels */}
+      <div className="relative h-6 text-[10px] text-gray-500">
+        {markers.map(m => (
+          <div key={m.label} className="absolute flex flex-col items-center gap-0.5"
+            style={{ left: `${pct(m.val)}%`, transform: "translateX(-50%)" }}>
+            <span style={{ color: m.color }} className="font-semibold">{m.label}</span>
+          </div>
+        ))}
+        <div className="absolute flex flex-col items-center" style={{ left: `${montoX}%`, transform: "translateX(-50%)" }}>
+          <span style={{ color: montoColor }} className="font-bold whitespace-nowrap">↑ Este</span>
+        </div>
+      </div>
+
+      {/* Values row */}
+      <div className="grid grid-cols-4 gap-1 text-center">
+        {[
+          { label: "P25",    val: p25,    color: "text-green-400" },
+          { label: "Mediana", val: mediana, color: "text-yellow-400" },
+          { label: "P75",    val: p75,    color: "text-orange-400" },
+          { label: "P90",    val: p90,    color: "text-red-400" },
+        ].map(({ label, val, color }) => (
+          <div key={label} className="bg-gray-900/50 border border-gray-800 rounded-xl p-2">
+            <div className={`text-[10px] font-semibold ${color} uppercase tracking-wide`}>{label}</div>
+            <div className="text-[11px] text-gray-300 font-mono mt-0.5 tabular-nums">{fmt(val)}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function ObraPage() {
   const { id } = useParams()
   const [data, setData]               = useState<any>(null)
@@ -207,12 +295,21 @@ export default function ObraPage() {
   const [loadingIA, setLoadingIA]     = useState(false)
   const [errorIA, setErrorIA]         = useState<string | null>(null)
   const [showPdf, setShowPdf]         = useState(false)
+  const [catScore, setCatScore]       = useState<any>(null)
+  const [catLoading, setCatLoading]   = useState(false)
 
   useEffect(() => {
     axios.get(`${API}/obra/${id}`)
       .then(r => { setData(r.data); setTimeout(() => setReady(true), 80) })
       .catch(() => setError(true))
       .finally(() => setLoading(false))
+
+    // Carga score por categoría en paralelo (sin IA para no bloquear)
+    setCatLoading(true)
+    axios.get(`${API}/obra/${id}/score-categoria`, { params: { genera_ia: false } })
+      .then(r => setCatScore(r.data))
+      .catch(() => {})
+      .finally(() => setCatLoading(false))
   }, [id])
 
   function generarComparacion() {
@@ -362,6 +459,164 @@ export default function ObraPage() {
           sub="con precio de mercado"
           color="text-gray-300" borderColor="border-gray-800"/>
       </div>
+
+      {/* ── Score por categoría ───────────────────────────────────────────── */}
+      {(catScore || catLoading) && (
+        <div className="mb-8 bg-gray-900/50 border border-gray-800 rounded-3xl overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800/60">
+            <div>
+              <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+                <IcTrendUp/>Comparación por categoría
+              </h2>
+              <p className="text-[11px] text-gray-600 mt-0.5">
+                {catScore
+                  ? `vs. ${catScore.n_contratos.toLocaleString()} contratos${catScore.categoria ? ` de "${catScore.categoria}"` : ""} en ${data?.pais}`
+                  : "Calculando distribución…"}
+              </p>
+            </div>
+
+            {catScore && catScore.semaforo !== "sin_datos" && (
+              <div className="text-right shrink-0">
+                <div className={`text-2xl font-black tabular-nums ${
+                  catScore.score >= 80 ? "text-red-400" : catScore.score >= 50 ? "text-orange-400" :
+                  catScore.score >= 20 ? "text-yellow-400" : "text-green-400"
+                }`}>{catScore.score.toFixed(0)}</div>
+                <div className="text-[10px] text-gray-600 uppercase tracking-widest">score cat.</div>
+              </div>
+            )}
+          </div>
+
+          <div className="p-6 space-y-6">
+            {catLoading && !catScore && (
+              <div className="flex items-center justify-center py-8 gap-3 text-gray-600 text-sm">
+                <div className="w-4 h-4 border-2 border-gray-600 border-t-gray-400 rounded-full animate-spin"/>
+                Comparando con contratos similares…
+              </div>
+            )}
+
+            {catScore && catScore.semaforo === "sin_datos" && (
+              <div className="text-center py-6 text-gray-600 text-sm">
+                Sin contratos similares en la base de datos para comparar.
+              </div>
+            )}
+
+            {catScore && catScore.semaforo !== "sin_datos" && (
+              <>
+                {/* Resumen de alertas */}
+                {catScore.alertas?.length > 0 && (
+                  <div className="space-y-1.5">
+                    {catScore.alertas.map((a: string, i: number) => (
+                      <div key={i} className="flex items-start gap-2.5 text-xs text-orange-300 bg-orange-500/8 border border-orange-700/30 rounded-xl px-4 py-2.5">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 mt-0.5">
+                          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                          <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                        {a}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Barra de distribución */}
+                <CategoryBar cat={catScore} moneda={data?.moneda || ""}/>
+
+                {/* Stat pills */}
+                <div className="grid grid-cols-3 gap-3 text-center text-xs">
+                  {[
+                    {
+                      label: "Posición percentil",
+                      val: `${catScore.percentil?.toFixed(0)}°`,
+                      color: catScore.percentil >= 90 ? "text-red-400" : catScore.percentil >= 75 ? "text-orange-400" : "text-gray-300",
+                    },
+                    {
+                      label: "vs mediana categoría",
+                      val: `${catScore.sobreprecio_pct >= 0 ? "+" : ""}${catScore.sobreprecio_pct?.toFixed(1)}%`,
+                      color: catScore.sobreprecio_pct > 50 ? "text-red-400" : catScore.sobreprecio_pct > 20 ? "text-orange-400" : "text-green-400",
+                    },
+                    {
+                      label: "Contratos comparados",
+                      val: catScore.n_contratos?.toLocaleString(),
+                      color: "text-gray-300",
+                    },
+                  ].map(({ label, val, color }) => (
+                    <div key={label} className="bg-gray-900/60 border border-gray-800 rounded-xl p-3">
+                      <div className="text-[10px] text-gray-600 uppercase tracking-widest mb-1">{label}</div>
+                      <div className={`font-bold tabular-nums ${color}`}>{val}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Contratos similares */}
+                {catScore.ejemplos?.length > 0 && (
+                  <div>
+                    <div className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold mb-2">
+                      Contratos más similares en monto
+                    </div>
+                    <div className="rounded-xl border border-gray-800/50 overflow-hidden divide-y divide-gray-800/40">
+                      {catScore.ejemplos.map((e: any, i: number) => {
+                        const diff = e.diferencia_pct || 0
+                        return (
+                          <div key={i} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-gray-800/20 transition-colors">
+                            <div className="flex-1 min-w-0">
+                              <Link href={`/obra/${e.obra_id}`}
+                                className="text-xs text-gray-300 hover:text-white transition-colors truncate block">
+                                {e.titulo}
+                              </Link>
+                              <div className="text-[10px] text-gray-600 mt-0.5">{e.entidad_compradora}</div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="text-xs font-mono text-gray-400 tabular-nums">
+                                {e.moneda} {Number(e.monto_adjudicado).toLocaleString()}
+                              </div>
+                              <div className={`text-[10px] font-semibold tabular-nums ${
+                                Math.abs(diff) < 10 ? "text-gray-500" : diff > 0 ? "text-orange-400" : "text-emerald-400"
+                              }`}>
+                                {diff > 0 ? "+" : ""}{diff.toFixed(0)}% vs este
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Botón para generar narrativa IA */}
+                {!catScore.narrativa_ia && (
+                  <button
+                    onClick={() => {
+                      setCatLoading(true)
+                      axios.get(`${API}/obra/${id}/score-categoria`, { params: { genera_ia: true } })
+                        .then(r => setCatScore(r.data))
+                        .finally(() => setCatLoading(false))
+                    }}
+                    disabled={catLoading}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm
+                      bg-indigo-500/8 border border-indigo-500/25 text-indigo-400
+                      hover:bg-indigo-500/15 hover:border-indigo-400/40 transition-all
+                      disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {catLoading
+                      ? <><span className="w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"/>Generando narrativa…</>
+                      : <><IcSparkle/>Generar análisis IA de la categoría</>
+                    }
+                  </button>
+                )}
+
+                {/* Narrativa IA */}
+                {catScore.narrativa_ia && (
+                  <div className="bg-indigo-950/20 border border-indigo-800/30 rounded-2xl px-5 py-4 text-xs text-gray-300 leading-relaxed">
+                    <div className="flex items-center gap-2 text-indigo-400 font-semibold mb-2 text-[11px] uppercase tracking-wide">
+                      <IcSparkle/>Análisis comparativo IA
+                    </div>
+                    {catScore.narrativa_ia}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Visor PDF ────────────────────────────────────────────────────── */}
       {data.pdf_url && (
