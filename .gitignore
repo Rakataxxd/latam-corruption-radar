@@ -1,0 +1,41 @@
+# Secrets
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+.next/
+.turbo/
+out/
+
+# Logs
+*.log
+scraper.log
+scraper_err.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# DB / uploads
+*.sqlite
+*.db
+uploads/
+
+# Build info
+tsconfig.tsbuildinfo
+
+# Test artifacts
+*obra_test.json
+*temp*.json
