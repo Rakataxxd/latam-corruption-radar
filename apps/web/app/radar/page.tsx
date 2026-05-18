@@ -1,5 +1,5 @@
 "use client"
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import axios from "axios"
@@ -67,6 +67,10 @@ function RowAccentColor(score: number): string {
 }
 
 export default function RadarPage() {
+  return <Suspense><RadarInner /></Suspense>
+}
+
+function RadarInner() {
   const searchParams = useSearchParams()
   const [obras, setObras]       = useState<any[]>([])
   const [total, setTotal]       = useState(0)

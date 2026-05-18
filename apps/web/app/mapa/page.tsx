@@ -62,7 +62,7 @@ async function loadCountryGeoJSON(
   try {
     const { feature } = await import("topojson-client")
     const worldData   = await import("world-atlas/countries-110m.json")
-    const geo = feature(worldData as any, (worldData as any).objects.countries) as GeoJSON.FeatureCollection
+    const geo = feature(worldData as any, (worldData as any).objects.countries) as unknown as GeoJSON.FeatureCollection
     return {
       type: "FeatureCollection",
       features: geo.features
