@@ -13,7 +13,7 @@ from groq import Groq
 
 groq = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
 
-SYSTEM_PROMPT = """Eres el analista de LatAm Corruption Radar.
+SYSTEM_PROMPT = """Eres el analista de ContraTector.
 Tu función: redactar en español claro y accesible para cualquier ciudadano
 el resultado del análisis de una cotización gubernamental.
 

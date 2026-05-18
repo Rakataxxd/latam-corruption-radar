@@ -21,7 +21,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="LatAm Corruption Radar API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="ContraTector API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

@@ -3,7 +3,7 @@ import "./globals.css"
 import Navbar from "@/components/Navbar"
 
 export const metadata: Metadata = {
-  title: "LatAm Corruption Radar",
+  title: "ContraTector",
   description: "Detectamos sobreprecio en cotizaciones públicas de Guatemala, El Salvador, México y Perú",
 }
 

@@ -16,7 +16,7 @@ export default function Navbar() {
       <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2 font-bold text-white">
           <span className="text-red-500 text-xl">◎</span>
-          <span>LatAm Corruption Radar</span>
+          <span>ContraTector</span>
         </Link>
         <div className="flex items-center gap-1">
           {links.map(l => (
