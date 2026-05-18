@@ -210,13 +210,30 @@ def import_idb(db, conn_sqlite) -> int:
             sector    = rj.get("sector") or rj.get("category_nm") or ""
             categoria = None if sector == "NULL" or not sector else sector
 
+            # Intentar extraer monto adjudicado del raw_json OCDS
+            monto = None
+            for campo in ("totalprojectcost", "totalamount", "amount", "contractamount", "awarded_amount"):
+                val = rj.get(campo)
+                if val and str(val).replace(".", "").isdigit():
+                    try:
+                        monto = float(val)
+                        if monto > 0:
+                            break
+                    except (TypeError, ValueError):
+                        pass
+
+            # Intentar extraer empresa del raw_json
+            empresa_nombre = rj.get("suppliername") or rj.get("vendor") or rj.get("contractor") or ""
+            empresa_id = _get_or_create_empresa(db, empresa_nombre, country or pais) if empresa_nombre else None
+
             obra = ObraPublica(
                 ocid               = ocid,
                 titulo             = title_clean,
                 descripcion        = rj.get("process_desc") or title_clean,
                 pais               = country or pais,
                 entidad_compradora = "BID / IDB",
-                monto_adjudicado   = None,
+                empresa_id         = empresa_id,
+                monto_adjudicado   = monto,
                 moneda             = "USD",
                 fecha_adjudicacion = fecha,
                 categoria          = categoria or "obra",

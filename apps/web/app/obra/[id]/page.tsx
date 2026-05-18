@@ -294,13 +294,23 @@ export default function ObraPage() {
   const [comparacion, setComparacion] = useState<any>(null)
   const [loadingIA, setLoadingIA]     = useState(false)
   const [errorIA, setErrorIA]         = useState<string | null>(null)
-  const [showPdf, setShowPdf]         = useState(false)
   const [catScore, setCatScore]       = useState<any>(null)
   const [catLoading, setCatLoading]   = useState(false)
 
   useEffect(() => {
     axios.get(`${API}/obra/${id}`)
-      .then(r => { setData(r.data); setTimeout(() => setReady(true), 80) })
+      .then(r => {
+        setData(r.data)
+        setTimeout(() => setReady(true), 80)
+        // Auto-cargar estimación IA si la obra tiene ítems
+        if (r.data.items?.length > 0) {
+          setLoadingIA(true)
+          axios.get(`${API}/obra/${id}/contrato-ia`)
+            .then(r2 => setComparacion(r2.data))
+            .catch(e => setErrorIA(e?.response?.data?.detail || "Error al generar estimación"))
+            .finally(() => setLoadingIA(false))
+        }
+      })
       .catch(() => setError(true))
       .finally(() => setLoading(false))
 
@@ -428,12 +438,6 @@ export default function ObraPage() {
               <a href={data.url_fuente} target="_blank" rel="noopener noreferrer"
                 className="flex items-center gap-1.5 px-3 py-1.5 border border-blue-500/30 bg-blue-500/8 text-blue-400 hover:bg-blue-500/15 rounded-xl text-xs font-medium transition-all hover:border-blue-500/50 w-full justify-center">
                 <IcLink/>Ver proyecto original
-              </a>
-            )}
-            {data.pdf_url && (
-              <a href={data.pdf_url} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 border border-red-500/30 bg-red-500/8 text-red-400 hover:bg-red-500/15 rounded-xl text-xs font-medium transition-all hover:border-red-500/50 w-full justify-center">
-                <IcFilePdf/>Ver PDF del contrato
               </a>
             )}
           </div>
@@ -618,52 +622,6 @@ export default function ObraPage() {
         </div>
       )}
 
-      {/* ── Visor PDF ────────────────────────────────────────────────────── */}
-      {data.pdf_url && (
-        <div className="mb-8">
-          <button
-            onClick={() => setShowPdf(v => !v)}
-            className="flex items-center gap-2.5 w-full px-5 py-3.5
-              bg-gray-900/60 border border-red-500/20 hover:border-red-500/40
-              hover:bg-gray-900/80 rounded-2xl text-sm text-gray-300 hover:text-white
-              transition-all duration-200 group"
-          >
-            <span className="w-8 h-8 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 shrink-0">
-              <IcFilePdf/>
-            </span>
-            <div className="flex-1 text-left">
-              <div className="font-medium text-sm">Documento original del contrato</div>
-              <div className="text-[11px] text-gray-500 mt-0.5">
-                {showPdf ? "Ocultar visor" : "Ver PDF embebido · " + (data.fuente || "")}
-              </div>
-            </div>
-            <svg
-              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-              className={`text-gray-500 transition-transform duration-300 ${showPdf ? "rotate-180" : ""}`}
-            >
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-          </button>
-
-          {showPdf && (
-            <div className="mt-2 rounded-2xl overflow-hidden border border-gray-800 bg-gray-950">
-              <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800 bg-gray-900/80">
-                <span className="text-xs text-gray-500 font-mono truncate flex-1 mr-4">{data.pdf_url}</span>
-                <a href={data.pdf_url} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs text-red-400 hover:text-red-300 border border-red-500/20 hover:border-red-500/40 transition-all shrink-0">
-                  <IcLink/>Abrir en nueva pestaña
-                </a>
-              </div>
-              <iframe
-                src={data.pdf_url}
-                className="w-full"
-                style={{ height: "700px" }}
-                title="Documento original del contrato"
-              />
-            </div>
-          )}
-        </div>
-      )}
 
       {/* ── Tabla de ítems ────────────────────────────────────────────────── */}
       {items.length > 0 ? (
@@ -855,17 +813,6 @@ export default function ObraPage() {
                       <span className="text-gray-500 group-hover:text-blue-400 transition-colors"><IcLink/></span>
                       <span className="flex-1 truncate text-xs">Ver proyecto original en {data.fuente}</span>
                       <span className="text-gray-700 group-hover:text-gray-400 transition-colors text-xs">↗</span>
-                    </a>
-                  )}
-                  {data.pdf_url && (
-                    <a href={data.pdf_url} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-2.5 w-full px-4 py-2.5
-                        bg-red-950/20 border border-red-500/20 hover:border-red-500/40
-                        hover:bg-red-950/30 rounded-xl text-sm text-red-400 hover:text-red-300
-                        transition-all duration-200 group">
-                      <span className="group-hover:scale-110 transition-transform"><IcFilePdf/></span>
-                      <span className="flex-1 truncate text-xs">Descargar / ver PDF del contrato original</span>
-                      <span className="text-red-700 group-hover:text-red-400 transition-colors text-xs">↗</span>
                     </a>
                   )}
                 </div>

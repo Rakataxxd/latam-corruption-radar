@@ -3,10 +3,9 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 
 const links = [
-  { href: "/grafo",   label: "Red de Contratos" },
-  { href: "/mapa",    label: "Mapa" },
-  { href: "/radar",   label: "Radar" },
-  { href: "/cotizar", label: "Analizar Cotización" },
+  { href: "/radar",      label: "Radar",               external: false },
+  { href: "/grafo.html", label: "Grafo",                external: true  },
+  { href: "/cotizar",    label: "Analizar Cotización",  external: false },
 ]
 
 export default function Navbar() {
@@ -19,16 +18,16 @@ export default function Navbar() {
           <span>CotiRadar</span>
         </Link>
         <div className="flex items-center gap-1">
-          {links.map(l => (
-            <Link key={l.href} href={l.href}
-              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${
-                path === l.href
-                  ? "bg-red-500 text-white"
-                  : "text-gray-400 hover:text-white hover:bg-white/10"
-              }`}>
-              {l.label}
-            </Link>
-          ))}
+          {links.map(l => {
+            const cls = `px-4 py-1.5 rounded-lg text-sm font-medium transition ${
+              path === l.href
+                ? "bg-red-500 text-white"
+                : "text-gray-400 hover:text-white hover:bg-white/10"
+            }`
+            return l.external
+              ? <a key={l.href} href={l.href} className={cls}>{l.label}</a>
+              : <Link key={l.href} href={l.href} className={cls}>{l.label}</Link>
+          })}
         </div>
       </div>
     </nav>

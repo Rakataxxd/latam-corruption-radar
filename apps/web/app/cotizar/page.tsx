@@ -129,12 +129,13 @@ function IconBarChart() {
 /* ── Page component ── */
 
 export default function CotizarPage() {
-  const [file, setFile]       = useState<File | null>(null)
-  const [pais, setPais]       = useState("GT")
-  const [nombre, setNombre]   = useState("")
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState("")
-  const [drag, setDrag]       = useState(false)
+  const [file, setFile]               = useState<File | null>(null)
+  const [pais, setPais]               = useState("GT")
+  const [nombre, setNombre]           = useState("")
+  const [loading, setLoading]         = useState(false)
+  const [error, setError]             = useState("")
+  const [drag, setDrag]               = useState(false)
+  const [esGubernamental, setEsGub]   = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const router   = useRouter()
 
@@ -157,7 +158,7 @@ export default function CotizarPage() {
       fd.append("nombre", nombre)
       fd.append("publica", "false")
       const { data } = await axios.post(`${API}/cotizacion/analizar`, fd, { timeout: 120_000 })
-      router.push(`/analisis/${data.id}`)
+      router.push(`/analisis/${data.id}${esGubernamental ? "?tipo=gubernamental" : ""}`)
     } catch (err: any) {
       setError(err.response?.data?.detail || "Error al analizar. Intentá de nuevo.")
     } finally {
@@ -304,6 +305,23 @@ export default function CotizarPage() {
                 className="w-full bg-gray-900 border border-gray-800 focus:border-gray-600 rounded-xl px-4 py-3 text-white placeholder-gray-600 outline-none transition-all duration-200"
               />
             </div>
+
+            {/* Cotización gubernamental */}
+            <label className="flex items-center gap-3 p-4 bg-gray-900/50 border border-gray-800 rounded-xl cursor-pointer hover:border-gray-700 transition-all group">
+              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-all ${esGubernamental ? "bg-red-500 border-red-500" : "border-gray-600 group-hover:border-gray-500"}`}
+                onClick={() => setEsGub(v => !v)}>
+                {esGubernamental && (
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="2 6 5 9 10 3"/>
+                  </svg>
+                )}
+              </div>
+              <input type="checkbox" className="hidden" checked={esGubernamental} onChange={e => setEsGub(e.target.checked)} />
+              <div>
+                <div className="text-sm font-medium text-gray-300">Es una cotización gubernamental</div>
+                <div className="text-xs text-gray-600 mt-0.5">Podrás publicarla anónimamente en el Radar de Obras Públicas</div>
+              </div>
+            </label>
 
             {/* Error */}
             {error && (

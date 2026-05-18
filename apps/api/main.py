@@ -1,17 +1,22 @@
 from __future__ import annotations
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, File, Form, Request, UploadFile, HTTPException, BackgroundTasks, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+
+UPLOADS_DIR = Path(__file__).parent / "uploads"
+UPLOADS_DIR.mkdir(exist_ok=True)
 
 from database import get_db, engine
 from models import Base
 from parser import parse_cotizacion
 from pricing import analyze
 from narrator import generate_narrative
-from schemas import CotizacionResponse, ObraListResponse, EmpresaDetail, ScrapeRequest, StatsResponse
+from schemas import CotizacionResponse, ObraListResponse, EmpresaDetail, ScrapeRequest, StatsResponse, PublicarEnRadarRequest
 import crud
 
 
@@ -29,6 +34,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
 
 @app.get("/health")
@@ -58,7 +65,23 @@ async def analizar_cotizacion(
 
     existing = crud.get_cotizacion_by_hash(db, parsed["hash"])
     if existing:
-        return existing
+        resultado_ex = existing.resultado or {}
+        cobertura_ex = resultado_ex.get("cobertura_pct", 0) if isinstance(resultado_ex, dict) else 0
+        if cobertura_ex > 0:
+            return {
+                "id":               str(existing.id),
+                "sobreprecio_score": float(existing.sobreprecio_score) if existing.sobreprecio_score else 0,
+                "sobreprecio_pct":  float(existing.sobreprecio_pct) if existing.sobreprecio_pct else 0,
+                "pais":             existing.pais,
+                "moneda":           existing.moneda,
+                "narrativa_ia":     existing.narrativa_ia,
+                "items":            existing.items,
+                "resultado":        existing.resultado,
+                "created_at":       str(existing.created_at),
+            }
+        # Resultado anterior tenía cobertura 0 → eliminar y re-analizar
+        db.delete(existing)
+        db.commit()
 
     pais_final = (pais or parsed.get("pais_detectado") or "GT").upper()
     result = analyze(db, parsed["items"], pais_final)
@@ -171,6 +194,9 @@ async def trigger_scrape(req: ScrapeRequest, background_tasks: BackgroundTasks, 
     async def scrape_and_build(pais, max_records, db):
         await run_scraper(pais, max_records, db)
         build_reference_prices(db, pais)
+        crud.batch_update_scores(db, pais)
+        _obras_cache.clear()
+        _obra_cache.clear()
 
     background_tasks.add_task(scrape_and_build, req.pais, req.max_records, db)
     return {"message": f"Scraping iniciado para {req.pais or 'todos los países'}", "status": "queued"}
@@ -180,6 +206,22 @@ async def trigger_scrape(req: ScrapeRequest, background_tasks: BackgroundTasks, 
 def trigger_build_prices(pais: Optional[str] = None, db: Session = Depends(get_db)):
     from build_reference_prices import build_reference_prices
     result = build_reference_prices(db, pais)
+    return {"status": "ok", **result}
+
+
+@app.post("/admin/recalcular-scores")
+def recalcular_scores(
+    pais: Optional[str] = None,
+    solo_sin_score: bool = Query(True, description="Solo contratos con score=0"),
+    db: Session = Depends(get_db),
+):
+    """
+    Calcula sobreprecio por percentil de categoría para contratos sin ítems (BID/IDB).
+    Ejecutar una vez después de importar datos nuevos.
+    """
+    result = crud.batch_update_scores(db, pais=pais, solo_sin_score=solo_sin_score)
+    _obras_cache.clear()
+    _obra_cache.clear()
     return {"status": "ok", **result}
 
 
@@ -391,7 +433,9 @@ def get_cotizacion(cotizacion_id: str, db: Session = Depends(get_db)):
         "id": cot.id, "sobreprecio_score": float(cot.sobreprecio_score) if cot.sobreprecio_score else 0,
         "sobreprecio_pct": float(cot.sobreprecio_pct) if cot.sobreprecio_pct else 0,
         "pais": cot.pais, "moneda": cot.moneda, "narrativa_ia": cot.narrativa_ia,
-        "items": cot.items, "resultado": cot.resultado, "created_at": str(cot.created_at),
+        "items": cot.items, "resultado": cot.resultado,
+        "nombre_usuario": cot.nombre_usuario,
+        "created_at": str(cot.created_at),
     }
 
 
@@ -449,6 +493,177 @@ def score_por_categoria(
         "ejemplos":       r.ejemplos,
         "narrativa_ia":   r.narrativa_ia,
     }
+
+
+@app.post("/cotizacion/{cotizacion_id}/contribuir")
+def contribuir_precios(cotizacion_id: str, db: Session = Depends(get_db)):
+    """
+    El usuario autoriza usar los precios de esta cotización para mejorar la DB de referencia.
+    - Items verde/amarillo: guarda el precio cotizado (precio real de mercado confirmado).
+    - Items naranja/rojo/IA: guarda el precio de referencia (más confiable que el cotizado inflado).
+    - Actualiza medianas con running average si ya existe entrada exacta; si no, inserta nueva.
+    """
+    from models import Cotizacion, PrecioReferencia
+    from sqlalchemy import func
+    from datetime import datetime as _dt
+
+    cot = db.query(Cotizacion).filter_by(id=cotizacion_id).first()
+    if not cot:
+        raise HTTPException(404, "Cotización no encontrada")
+
+    resultado = cot.resultado or {}
+    items     = resultado.get("items", [])
+    pais      = cot.pais or "GT"
+    moneda    = cot.moneda or "GTQ"
+
+    guardados   = 0
+    actualizados = 0
+
+    for item in items:
+        ref_price      = item.get("precio_referencia")
+        precio_cotizado = float(item.get("precio_unitario") or 0)
+        semaforo        = item.get("semaforo", "sin_referencia")
+        descripcion     = str(item.get("descripcion", "")).strip().lower()
+        unidad          = item.get("unidad", "unidad")
+
+        if not descripcion or not ref_price:
+            continue
+        ref = float(ref_price)
+        if ref <= 0:
+            continue
+
+        # Precio a guardar: precio real observado si está dentro del rango de mercado,
+        # precio de referencia si estaba inflado.
+        if semaforo in ("verde", "amarillo") and precio_cotizado > 0:
+            precio_final = precio_cotizado
+        else:
+            precio_final = ref
+
+        # Buscar entrada exacta (descripcion + pais) para hacer running average
+        existing = db.query(PrecioReferencia).filter(
+            func.lower(PrecioReferencia.descripcion) == descripcion,
+            PrecioReferencia.pais == pais,
+        ).first()
+
+        if existing:
+            n        = existing.n_muestras or 1
+            old_med  = float(existing.precio_mediana)
+            new_med  = round((old_med * n + precio_final) / (n + 1), 4)
+            existing.precio_mediana       = new_med
+            existing.n_muestras           = n + 1
+            existing.ultima_actualizacion = _dt.utcnow()
+            actualizados += 1
+        else:
+            ref_data = item.get("referencia") or {}
+            p25 = float(ref_data.get("precio_p25") or precio_final * 0.80)
+            p75 = float(ref_data.get("precio_p75") or precio_final * 1.25)
+            db.add(PrecioReferencia(
+                descripcion=descripcion,
+                unidad=unidad,
+                precio_mediana=precio_final,
+                precio_p25=p25,
+                precio_p75=p75,
+                n_muestras=1,
+                pais=pais,
+                moneda=moneda,
+                fuente=f"cotizacion_{pais}",
+            ))
+            guardados += 1
+
+    db.commit()
+    return {"status": "ok", "guardados": guardados, "actualizados": actualizados, "total_items": len(items)}
+
+
+@app.post("/cotizacion/{cotizacion_id}/publicar-en-radar")
+def publicar_en_radar(
+    cotizacion_id: str,
+    req: PublicarEnRadarRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Publica una cotización gubernamental anónimamente en el Radar de Obras Públicas.
+    Crea un ObraPublica con los datos e ítems de la cotización.
+    """
+    from models import Cotizacion, ObraPublica
+
+    cot = db.query(Cotizacion).filter_by(id=cotizacion_id).first()
+    if not cot:
+        raise HTTPException(404, "Cotización no encontrada")
+
+    ocid_cot = f"cot-{cotizacion_id}"
+    existing = db.query(ObraPublica).filter(ObraPublica.ocid == ocid_cot).first()
+    if existing:
+        return {"status": "ya_publicado", "obra_id": str(existing.id)}
+
+    resultado = cot.resultado or {}
+    monto = resultado.get("total_cotizado")
+    titulo_final = req.titulo or f"Contrato en {req.entidad_compradora}"
+
+    # Crear o encontrar empresa si se proporcionó
+    empresa_id = None
+    if req.empresa_nombre and req.empresa_nombre.strip():
+        from models import Empresa
+        nombre_emp = req.empresa_nombre.strip()
+        emp = db.query(Empresa).filter(Empresa.nombre_canónico == nombre_emp).first()
+        if not emp:
+            emp = Empresa(
+                nombre_canónico  = nombre_emp,
+                paises           = [cot.pais or "GT"],
+                score_riesgo     = 0,
+                total_contratos  = 1,
+                total_adjudicado = float(monto) if monto else 0,
+                sobreprecio_prom = float(cot.sobreprecio_pct) if cot.sobreprecio_pct else 0,
+            )
+            db.add(emp)
+            db.flush()
+        empresa_id = str(emp.id)
+
+    obra = ObraPublica(
+        ocid               = ocid_cot,
+        titulo             = titulo_final,
+        pais               = cot.pais or "GT",
+        entidad_compradora = req.entidad_compradora,
+        empresa_id         = empresa_id,
+        monto_adjudicado   = float(monto) if monto else None,
+        moneda             = cot.moneda or "GTQ",
+        items              = cot.items,
+        sobreprecio_score  = float(cot.sobreprecio_score) if cot.sobreprecio_score else 0,
+        sobreprecio_pct    = float(cot.sobreprecio_pct) if cot.sobreprecio_pct else 0,
+        fuente             = "usuario_contribucion",
+        procesado          = True,
+    )
+    db.add(obra)
+    db.commit()
+    db.refresh(obra)
+    _obras_cache.clear()
+    _obra_cache.clear()
+
+    return {"status": "publicado", "obra_id": str(obra.id)}
+
+
+@app.get("/grafo/productos")
+def grafo_productos(pais: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    """Nodos de productos para el grafo — solo entradas contribuidas por usuarios."""
+    from models import PrecioReferencia
+    q = db.query(PrecioReferencia).filter(
+        PrecioReferencia.fuente.like("cotizacion_%")
+    )
+    if pais:
+        q = q.filter(PrecioReferencia.pais == pais.upper())
+    refs = q.order_by(PrecioReferencia.ultima_actualizacion.desc()).limit(300).all()
+    out = []
+    for precio in refs:
+        out.append({
+            "id":             str(precio.id),
+            "descripcion":    precio.descripcion,
+            "precio_mediana": float(precio.precio_mediana),
+            "precio_p25":     float(precio.precio_p25) if precio.precio_p25 else None,
+            "precio_p75":     float(precio.precio_p75) if precio.precio_p75 else None,
+            "pais":           precio.pais,
+            "moneda":         precio.moneda,
+            "n_muestras":     precio.n_muestras or 1,
+        })
+    return out
 
 
 @app.post("/webhook/whatsapp")

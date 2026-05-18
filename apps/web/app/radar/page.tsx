@@ -22,7 +22,18 @@ function CountryPill({ code }: { code: string }) {
   )
 }
 
-function ScoreBadge({ score, pct }: { score: number; pct: number }) {
+function ScoreBadge({ score, pct, sinDatos }: { score: number; pct: number; sinDatos?: boolean }) {
+  if (sinDatos) {
+    return (
+      <div className="text-right">
+        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs font-medium mb-0.5 bg-gray-800/50 text-gray-500 border-gray-700/50">
+          <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-gray-600" />
+          <span>Sin datos</span>
+        </div>
+        <div className="text-sm font-bold text-gray-600">—</div>
+      </div>
+    )
+  }
   const color =
     score >= 80 ? "bg-red-500/20 text-red-300 border-red-500/40" :
     score >= 50 ? "bg-orange-500/20 text-orange-300 border-orange-500/40" :
@@ -79,7 +90,6 @@ function RadarInner() {
   const [loading, setLoading]   = useState(false)
   const [busqueda, setBusqueda] = useState(searchParams.get("busqueda") || "")
   const [query, setQuery]       = useState(searchParams.get("busqueda") || "")
-
   useEffect(() => {
     setLoading(true)
     axios.get(`${API}/obras`, {
@@ -122,7 +132,7 @@ function RadarInner() {
           <h1 className="text-3xl font-bold text-white">Radar de Obras Públicas</h1>
         </div>
         <p className="text-gray-500 text-sm pl-8">
-          {total.toLocaleString()} contratos indexados · ordenados por sobreprecio vs. mediana histórica
+          {total.toLocaleString()} contratos indexados · ordenados por score de riesgo
         </p>
       </div>
 
@@ -213,13 +223,15 @@ function RadarInner() {
             </thead>
             <tbody className="divide-y divide-gray-800/50">
               {obras.map((o, i) => {
-                const score = o.sobreprecio_score || 0
+                const score = o.sobreprecio_score ?? 0
+                const sinDatos = o.sobreprecio_score === null && o.monto_adjudicado === null
                 return (
                   <tr
                     key={o.id}
                     className={`hover:bg-white/[0.025] transition-all duration-150 group border-l-2 border-transparent hover:${RowAccentColor(score)}`}
                     style={{ borderLeftColor: undefined }}
                     onMouseEnter={e => {
+                      if (sinDatos) return
                       const el = e.currentTarget
                       const colors: Record<string, string> = {
                         "border-red-500": "#ef4444",
@@ -273,8 +285,8 @@ function RadarInner() {
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex flex-col items-end gap-1.5">
-                        <ScoreBadge score={score} pct={o.sobreprecio_pct || 0} />
-                        <ScoreBar score={score} />
+                        <ScoreBadge score={score} pct={o.sobreprecio_pct || 0} sinDatos={sinDatos} />
+                        {!sinDatos && <ScoreBar score={score} />}
                       </div>
                     </td>
                   </tr>

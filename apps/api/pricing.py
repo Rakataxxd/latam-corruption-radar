@@ -1,8 +1,12 @@
 from __future__ import annotations
+import json
+import os
 from dataclasses import dataclass, field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+_PAIS_NOMBRES = {"GT": "Guatemala", "SV": "El Salvador", "MX": "México", "PE": "Perú"}
+_MONEDAS      = {"GT": "GTQ", "SV": "USD", "MX": "MXN", "PE": "PEN"}
 
 _REF_QUERY = text("""
     SELECT
@@ -17,7 +21,7 @@ _REF_QUERY = text("""
     FROM precios_referencia
     WHERE
         (:pais IS NULL OR pais = :pais OR pais IS NULL)
-        AND similarity(lower(unaccent(descripcion)), lower(unaccent(:query))) > 0.20
+        AND similarity(lower(unaccent(descripcion)), lower(unaccent(:query))) > 0.38
     ORDER BY sim DESC
     LIMIT 1
 """)
@@ -32,12 +36,10 @@ def _find_reference(db: Session, descripcion: str, pais: str | None) -> dict | N
             db.rollback()
         except Exception:
             pass
-        # Fallback: búsqueda simple sin pg_trgm
         return _find_reference_simple(db, descripcion, pais)
 
 
 def _find_reference_simple(db: Session, descripcion: str, pais: str | None) -> dict | None:
-    """Fallback sin pg_trgm: busca por palabras clave."""
     try:
         from models import PrecioReferencia
         words = [w for w in descripcion.lower().split() if len(w) > 3][:3]
@@ -54,7 +56,7 @@ def _find_reference_simple(db: Session, descripcion: str, pais: str | None) -> d
         for ref in refs:
             ref_words = set(ref.descripcion.lower().split())
             overlap = len(desc_words & ref_words) / max(len(desc_words), len(ref_words), 1)
-            if overlap > best_score and overlap > 0.2:
+            if overlap > best_score and overlap > 0.38:
                 best_score = overlap
                 best = ref
         if best:
@@ -72,8 +74,93 @@ def _find_reference_simple(db: Session, descripcion: str, pais: str | None) -> d
         return None
 
 
+def _fetch_prices_groq(items: list[dict], pais: str, db_context: list[dict] | None = None) -> dict[int, dict]:
+    """Busca precios de mercado usando Groq, anclado a los precios conocidos de la DB."""
+    from groq import Groq
+
+    groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
+    pais_nombre = _PAIS_NOMBRES.get(pais, pais)
+
+    items_list = "\n".join(
+        f"{i + 1}. {item['descripcion']} (unidad: {item.get('unidad', 'unidad')})"
+        for i, item in enumerate(items)
+    )
+
+    # Contexto ancla: precios ya validados en la DB para este país
+    anchor_block = ""
+    if db_context:
+        anchor_lines = "\n".join(
+            f"- {c['descripcion']}: ${c['precio_mediana']:.2f} USD (rango ${c.get('precio_p25') or c['precio_mediana']*0.8:.2f}–${c.get('precio_p75') or c['precio_mediana']*1.25:.2f})"
+            for c in db_context[:15]
+        )
+        anchor_block = f"""
+PRECIOS DE REFERENCIA VALIDADOS PARA {pais_nombre.upper()} (en USD):
+{anchor_lines}
+
+Usa estos precios como ancla para calibrar tus estimaciones. Tus respuestas deben ser coherentes con este rango de precios — no estimes valores que contradigan drásticamente estos datos validados.
+"""
+
+    prompt = f"""Eres un experto en precios de mercado de contratación pública en {pais_nombre}.
+{anchor_block}
+Para cada ítem de la lista, estima el precio unitario de mercado en {pais_nombre} en 2024-2025.
+
+Ítems a estimar:
+{items_list}
+
+Responde SOLO con JSON válido (sin markdown):
+{{
+  "precios": [
+    {{
+      "item": 1,
+      "precio_unitario_mercado": 0.0,
+      "precio_p25": 0.0,
+      "precio_p75": 0.0,
+      "confianza": "alta|media|baja",
+      "fuente_referencia": "descripción breve de la fuente"
+    }}
+  ]
+}}
+
+REGLAS ESTRICTAS:
+- Todos los precios en USD (dólares americanos).
+- Sé consistente con los precios ancla de referencia mostrados arriba.
+- confianza "alta": precio bien conocido | "media": estimación razonable | "baja": incertidumbre alta
+- precio_p25 = percentil bajo del rango, precio_p75 = percentil alto
+- Si el ítem no tiene precio posible usa 0."""
+
+    try:
+        resp = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            max_tokens=3000,
+            response_format={"type": "json_object"},
+        )
+        data = json.loads(resp.choices[0].message.content)
+        result: dict[int, dict] = {}
+        for p in data.get("precios", []):
+            idx = int(p.get("item", 0)) - 1
+            med = float(p.get("precio_unitario_mercado", 0) or 0)
+            if 0 <= idx < len(items) and med > 0:
+                p25 = float(p.get("precio_p25") or med * 0.80)
+                p75 = float(p.get("precio_p75") or med * 1.25)
+                result[idx] = {
+                    "descripcion":    items[idx]["descripcion"],
+                    "precio_mediana": med,
+                    "precio_p25":     p25,
+                    "precio_p75":     p75,
+                    "desviacion_std": None,
+                    "n_muestras":     0,
+                    "fuente":         f"IA ({pais_nombre}): {p.get('fuente_referencia', 'estimación de mercado')}",
+                    "confianza":      p.get("confianza", "media"),
+                    "es_estimacion_ia": True,
+                }
+        return result
+    except Exception:
+        return {}
+
+
 def _find_source_contracts(db: Session, descripcion: str, pais: str | None, limit: int = 4) -> list[dict]:
-    """Devuelve obras_publicas que tienen items similares (transparencia de fuente)."""
     try:
         from models import ObraPublica
         desc_words = {w for w in descripcion.lower().split() if len(w) > 2}
@@ -98,18 +185,18 @@ def _find_source_contracts(db: Session, descripcion: str, pais: str | None, limi
                         pu = 0.0
                     if pu > 0:
                         matches.append({
-                            "obra_id":    str(obra.id),
-                            "titulo":     obra.titulo,
-                            "entidad":    obra.entidad_compradora,
-                            "pais":       obra.pais,
-                            "fecha":      str(obra.fecha_adjudicacion) if obra.fecha_adjudicacion else None,
-                            "url_fuente": obra.url_fuente,
+                            "obra_id":               str(obra.id),
+                            "titulo":                obra.titulo,
+                            "entidad":               obra.entidad_compradora,
+                            "pais":                  obra.pais,
+                            "fecha":                 str(obra.fecha_adjudicacion) if obra.fecha_adjudicacion else None,
+                            "url_fuente":            obra.url_fuente,
                             "precio_unitario":       round(pu, 2),
                             "descripcion_encontrada": item.get("descripcion"),
-                            "unidad":     item.get("unidad"),
-                            "_score":     overlap,
+                            "unidad":                item.get("unidad"),
+                            "_score":                overlap,
                         })
-                        break  # una coincidencia por obra
+                        break
         matches.sort(key=lambda x: x.pop("_score"), reverse=True)
         return matches[:limit]
     except Exception:
@@ -148,38 +235,90 @@ class AnalysisResult:
 
 
 def analyze(db: Session, items: list[dict], pais: str | None, include_sources: bool = True) -> AnalysisResult:
-    enriched = []
-    total_cot = total_ref = 0.0
-    scores: list[float] = []
+    if not items:
+        return AnalysisResult(items=[], alertas=["No se encontraron ítems en el documento."])
 
+    # ── 1. Total cotizado real: siempre suma los precios del documento ──
+    total_cot = 0.0
     for item in items:
         pu  = float(item.get("precio_unitario") or 0)
         qty = float(item.get("cantidad") or 1)
         pt  = float(item.get("precio_total") or pu * qty)
+        total_cot += pt
 
+    # ── 2. Buscar referencias en la DB para cada ítem ──
+    db_refs: dict[int, dict] = {}
+    for i, item in enumerate(items):
         ref = _find_reference(db, item.get("descripcion", ""), pais)
+        if ref and ref.get("precio_mediana") and float(ref["precio_mediana"]) > 0:
+            db_refs[i] = ref
 
-        row = {**item, "referencia": None, "semaforo": "sin_referencia",
-               "sobreprecio_pct": None, "sobreprecio_score": None}
+    # ── 3. Ítems sin referencia en DB → Groq anclado a los precios conocidos ──
+    no_ref_indices = [i for i in range(len(items)) if i not in db_refs]
+    groq_refs: dict[int, dict] = {}
+    if no_ref_indices:
+        no_ref_items = [items[i] for i in no_ref_indices]
+        # Pasar los precios ya validados en DB como ancla para Groq
+        db_context = [
+            {
+                "descripcion":    ref["descripcion"],
+                "precio_mediana": float(ref["precio_mediana"]),
+                "precio_p25":     float(ref["precio_p25"]) if ref.get("precio_p25") else None,
+                "precio_p75":     float(ref["precio_p75"]) if ref.get("precio_p75") else None,
+            }
+            for ref in db_refs.values()
+            if ref.get("precio_mediana")
+        ]
+        groq_prices = _fetch_prices_groq(no_ref_items, pais or "GT", db_context=db_context or None)
+        for local_j, original_i in enumerate(no_ref_indices):
+            if local_j in groq_prices:
+                groq_refs[original_i] = groq_prices[local_j]
+
+    # ── 4. Construir ítems enriquecidos ──
+    enriched   = []
+    total_ref  = 0.0
+    scores: list[float] = []
+
+    for i, item in enumerate(items):
+        pu  = float(item.get("precio_unitario") or 0)
+        qty = float(item.get("cantidad") or 1)
+        pt  = float(item.get("precio_total") or pu * qty)
+
+        ref = db_refs.get(i) or groq_refs.get(i)
+
+        row = {
+            **item,
+            "referencia":       None,
+            "precio_referencia": None,
+            "semaforo":         "sin_referencia",
+            "sobreprecio_pct":  None,
+            "sobreprecio_score": None,
+            "es_estimacion_ia": False,
+        }
 
         if ref and ref.get("precio_mediana") and float(ref["precio_mediana"]) > 0:
-            med  = float(ref["precio_mediana"])
-            std  = float(ref["desviacion_std"]) if ref.get("desviacion_std") else None
-            sc   = _overprice_score(pu, med, std)
+            med = float(ref["precio_mediana"])
+            std = float(ref["desviacion_std"]) if ref.get("desviacion_std") else None
+            sc  = _overprice_score(pu, med, std)
             spct = (pu - med) / med * 100
 
-            fuentes = _find_source_contracts(db, item.get("descripcion", ""), pais) if include_sources else []
+            fuentes = (
+                _find_source_contracts(db, item.get("descripcion", ""), pais)
+                if include_sources else []
+            )
 
             row.update({
-                "referencia":          ref,
-                "precio_referencia":   med,
-                "sobreprecio_pct":     round(spct, 2),
-                "sobreprecio_score":   round(sc, 2),
-                "semaforo":            _semaforo(sc),
+                "referencia":           ref,
+                "precio_referencia":    med,
+                "sobreprecio_pct":      round(spct, 2),
+                "sobreprecio_score":    round(sc, 2),
+                "semaforo":             _semaforo(sc),
                 "contratos_referencia": fuentes,
+                "fuente_ref":           ref.get("fuente", ""),
+                "es_estimacion_ia":     i in groq_refs,
+                "confianza_ref":        ref.get("confianza", "alta") if i in groq_refs else "alta",
             })
             scores.append(sc)
-            total_cot += pt
             total_ref += med * qty
 
         enriched.append(row)
@@ -191,10 +330,16 @@ def analyze(db: Session, items: list[dict], pais: str | None, include_sources: b
     alertas: list[str] = []
     rojos = [i for i in enriched if i["semaforo"] == "rojo"]
     if rojos:
-        alertas.append(f"{len(rojos)} ítem(s) con sobreprecio severo: " +
-                       ", ".join(i["descripcion"][:40] for i in rojos[:3]))
-    if cobertura < 40:
+        alertas.append(
+            f"{len(rojos)} ítem(s) con sobreprecio severo: "
+            + ", ".join(i["descripcion"][:40] for i in rojos[:3])
+        )
+    if cobertura < 40 and not groq_refs:
         alertas.append("Cobertura de referencias baja. Resultados orientativos.")
+    if groq_refs:
+        alertas.append(
+            f"{len(groq_refs)} precio(s) de referencia estimados por IA ({_PAIS_NOMBRES.get(pais or 'GT', pais)})."
+        )
 
     return AnalysisResult(
         items            = enriched,

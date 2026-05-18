@@ -1,10 +1,20 @@
 "use client"
-import { useEffect, useState } from "react"
-import { useParams } from "next/navigation"
+import { useEffect, useState, Suspense } from "react"
+import { useParams, useSearchParams, useRouter } from "next/navigation"
 import axios from "axios"
 import Link from "next/link"
 
+type ContribuirState = "idle" | "loading" | "done" | "declined"
+type RadarState      = "idle" | "loading" | "done" | "declined"
+
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+
+const PAISES: Record<string, { name: string; flag: string }> = {
+  GT: { name: "Guatemala",   flag: "🇬🇹" },
+  SV: { name: "El Salvador", flag: "🇸🇻" },
+  MX: { name: "México",      flag: "🇲🇽" },
+  PE: { name: "Perú",        flag: "🇵🇪" },
+}
 
 const SEMAFORO: Record<string, { bg: string; text: string; border: string; dot: string; label: string }> = {
   rojo:           { bg: "bg-red-500/10",    text: "text-red-300",    border: "border-red-700",    dot: "bg-red-500",    label: "Severo" },
@@ -57,10 +67,55 @@ function SemDot({ dotClass }: { dotClass: string }) {
 }
 
 export default function AnalisisPage() {
+  return <Suspense><AnalisisInner /></Suspense>
+}
+
+function AnalisisInner() {
   const { id } = useParams()
-  const [data, setData]   = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [visible, setVisible] = useState(false)
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const esGubernamental = searchParams.get("tipo") === "gubernamental"
+
+  const [data, setData]         = useState<any>(null)
+  const [loading, setLoading]   = useState(true)
+  const [visible, setVisible]   = useState(false)
+  const [contribuir, setContribuir] = useState<ContribuirState>("idle")
+  const [guardados, setGuardados]   = useState<{ guardados: number; actualizados: number } | null>(null)
+
+  const [radarState, setRadarState]         = useState<RadarState>("idle")
+  const [entidadCompradora, setEntidad]     = useState("")
+  const [tituloContrato, setTituloContrato] = useState("")
+  const [empresaCotizante, setEmpresa]      = useState("")
+  const [obraPublicadaId, setObraId]        = useState<string | null>(null)
+
+  const handleContribuir = async () => {
+    setContribuir("loading")
+    try {
+      const { data: res } = await axios.post(`${API}/cotizacion/${id}/contribuir`)
+      setGuardados(res)
+      setContribuir("done")
+    } catch {
+      setContribuir("idle")
+    }
+  }
+
+  const handlePublicarRadar = async () => {
+    if (!entidadCompradora.trim()) return
+    setRadarState("loading")
+    try {
+      const { data: res } = await axios.post(`${API}/cotizacion/${id}/publicar-en-radar`, {
+        entidad_compradora: entidadCompradora.trim(),
+        titulo: tituloContrato.trim() || undefined,
+        empresa_nombre: empresaCotizante.trim() || undefined,
+      })
+      setObraId(res.obra_id)
+      setRadarState("done")
+      // Ir al Radar para ver el contrato publicado
+      setTimeout(() => router.push("/radar"), 1200)
+    } catch {
+      setRadarState("idle")
+    }
+  }
 
   useEffect(() => {
     axios.get(`${API}/cotizaciones/${id}`).then(r => setData(r.data)).catch(() => {}).finally(() => setLoading(false))
@@ -121,7 +176,14 @@ export default function AnalisisPage() {
         <Link href="/radar" className="text-gray-500 hover:text-white text-sm transition-colors">Radar</Link>
       </div>
 
-      <h1 className="text-2xl font-bold text-white mb-2">Resultado del análisis</h1>
+      <div className="flex items-center gap-3 mb-2">
+        <h1 className="text-2xl font-bold text-white">Resultado del análisis</h1>
+        {data.pais && PAISES[data.pais] && (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-300 font-medium">
+            {PAISES[data.pais].flag} {PAISES[data.pais].name}
+          </span>
+        )}
+      </div>
       {data.nombre_usuario && (
         <p className="text-gray-500 text-sm mb-6">{data.nombre_usuario}</p>
       )}
@@ -133,8 +195,8 @@ export default function AnalisisPage() {
         <div className="md:col-span-2 space-y-3">
           {[
             { label: "Sobreprecio vs mercado", value: `${(data.sobreprecio_pct || 0) > 0 ? "+" : ""}${Number(data.sobreprecio_pct || 0).toFixed(1)}%` },
-            { label: "Total cotizado", value: `${data.moneda} ${Number(resultado.total_cotizado || 0).toLocaleString()}` },
-            { label: "Referencia de mercado", value: `${data.moneda} ${Number(resultado.total_referencia || 0).toLocaleString()}` },
+            { label: "Total cotizado", value: `$${Number(resultado.total_cotizado || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD` },
+            { label: "Referencia de mercado", value: `$${Number(resultado.total_referencia || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD` },
             { label: "Cobertura de análisis", value: `${resultado.cobertura_pct || 0}%` },
           ].map(s => (
             <div key={s.label} className="flex justify-between border-b border-gray-800 pb-2">
@@ -158,6 +220,149 @@ export default function AnalisisPage() {
         </div>
       )}
 
+      {/* ── Card de contribución ── */}
+      {contribuir === "idle" && data && (
+        <div className="mb-8 bg-gray-900/60 border border-indigo-500/20 rounded-2xl p-5">
+          <div className="flex items-start gap-4">
+            <div className="shrink-0 w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/25 flex items-center justify-center">
+              <svg className="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.625c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-white font-semibold text-sm mb-1">¿Mejoramos el radar de mercado juntos?</h3>
+              <p className="text-gray-400 text-xs leading-relaxed mb-4">
+                Los precios de referencia de esta cotización pueden guardarse anónimamente para que futuros análisis sean más precisos.
+                Los datos también aparecerán como nodos en el grafo de precios locales.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleContribuir}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-semibold rounded-lg transition-all"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                  Sí, contribuir precios
+                </button>
+                <button
+                  onClick={() => setContribuir("declined")}
+                  className="px-4 py-2 text-gray-500 hover:text-gray-300 text-xs font-medium rounded-lg transition-all hover:bg-white/5"
+                >
+                  No, gracias
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {contribuir === "loading" && (
+        <div className="mb-8 bg-gray-900/60 border border-indigo-500/20 rounded-2xl p-5 flex items-center gap-3">
+          <div className="w-4 h-4 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin shrink-0" />
+          <span className="text-gray-400 text-sm">Guardando precios en el radar...</span>
+        </div>
+      )}
+
+      {contribuir === "done" && guardados && (
+        <div className="mb-8 bg-green-500/8 border border-green-800/40 rounded-2xl p-5 flex items-start gap-3">
+          <svg className="w-5 h-5 text-green-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+          </svg>
+          <div>
+            <p className="text-green-300 text-sm font-medium">¡Gracias por contribuir!</p>
+            <p className="text-green-400/70 text-xs mt-0.5">
+              {guardados.guardados > 0 && `${guardados.guardados} precios nuevos agregados`}
+              {guardados.guardados > 0 && guardados.actualizados > 0 && " · "}
+              {guardados.actualizados > 0 && `${guardados.actualizados} medianas actualizadas`}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Card de publicar en Radar (solo cotizaciones gubernamentales) ── */}
+      {esGubernamental && radarState === "idle" && (
+        <div className="mb-8 bg-gray-900/60 border border-red-500/20 rounded-2xl p-5">
+          <div className="flex items-start gap-4">
+            <div className="shrink-0 w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/25 flex items-center justify-center">
+              <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                <polyline strokeLinecap="round" strokeLinejoin="round" points="9 22 9 12 15 12 15 22"/>
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-white font-semibold text-sm mb-1">¿Publicar este contrato en el Radar?</h3>
+              <p className="text-gray-400 text-xs leading-relaxed mb-4">
+                Podés publicarlo anónimamente en el Radar de Obras Públicas para que otros ciudadanos puedan verlo y compararlo.
+              </p>
+              <div className="space-y-2 mb-4">
+                <input
+                  value={entidadCompradora}
+                  onChange={e => setEntidad(e.target.value)}
+                  placeholder="Entidad compradora (ej: Ministerio de Salud) *"
+                  className="w-full bg-gray-800 border border-gray-700 focus:border-gray-500 rounded-lg px-3 py-2 text-white placeholder-gray-600 text-xs outline-none transition-all"
+                />
+                <input
+                  value={empresaCotizante}
+                  onChange={e => setEmpresa(e.target.value)}
+                  placeholder="Empresa que cotiza (ej: Constructora ABC, S.A.)"
+                  className="w-full bg-gray-800 border border-gray-700 focus:border-gray-500 rounded-lg px-3 py-2 text-white placeholder-gray-600 text-xs outline-none transition-all"
+                />
+                <input
+                  value={tituloContrato}
+                  onChange={e => setTituloContrato(e.target.value)}
+                  placeholder="Título del contrato (opcional)"
+                  className="w-full bg-gray-800 border border-gray-700 focus:border-gray-500 rounded-lg px-3 py-2 text-white placeholder-gray-600 text-xs outline-none transition-all"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handlePublicarRadar}
+                  disabled={!entidadCompradora.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg transition-all"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7Z"/>
+                  </svg>
+                  Publicar en Radar
+                </button>
+                <button
+                  onClick={() => setRadarState("declined")}
+                  className="px-4 py-2 text-gray-500 hover:text-gray-300 text-xs font-medium rounded-lg transition-all hover:bg-white/5"
+                >
+                  No, gracias
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {radarState === "loading" && (
+        <div className="mb-8 bg-gray-900/60 border border-red-500/20 rounded-2xl p-5 flex items-center gap-3">
+          <div className="w-4 h-4 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin shrink-0" />
+          <span className="text-gray-400 text-sm">Publicando en el Radar...</span>
+        </div>
+      )}
+
+      {radarState === "done" && obraPublicadaId && (
+        <div className="mb-8 bg-green-500/8 border border-green-800/40 rounded-2xl p-5 flex items-start gap-3">
+          <svg className="w-5 h-5 text-green-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+          </svg>
+          <div>
+            <p className="text-green-300 text-sm font-medium">¡Contrato publicado en el Radar!</p>
+            <Link
+              href={`/obra/${obraPublicadaId}`}
+              className="text-green-400/70 text-xs mt-0.5 hover:text-green-300 underline underline-offset-2 transition-colors"
+            >
+              Ver en el Radar →
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Items */}
       {items.length > 0 && (
         <div>
@@ -173,17 +378,30 @@ export default function AnalisisPage() {
                   <div className="flex items-start gap-3 px-4 py-3">
                     <SemDot dotClass={s.dot} />
                     <div className="flex-1 min-w-0">
-                      <div className={`font-medium text-sm leading-snug ${s.text}`}>{item.descripcion}</div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`font-medium text-sm leading-snug ${s.text}`}>{item.descripcion}</span>
+                        {item.es_estimacion_ia && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                            <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z" />
+                            </svg>
+                            Estimación IA
+                          </span>
+                        )}
+                      </div>
                       <div className="text-xs text-gray-500 mt-0.5">
                         {item.cantidad} {item.unidad}
                         {item.precio_referencia && (
-                          <span className="ml-2">· precio mercado: <span className="text-gray-300 font-medium">{Number(item.precio_referencia).toFixed(2)}</span></span>
+                          <span className="ml-2">· ref: <span className="text-gray-300 font-medium">${Number(item.precio_referencia).toFixed(2)}</span></span>
+                        )}
+                        {item.fuente_ref && (
+                          <span className="ml-2 text-gray-600 truncate" title={item.fuente_ref}>· {item.fuente_ref.length > 50 ? item.fuente_ref.slice(0, 50) + "…" : item.fuente_ref}</span>
                         )}
                       </div>
                     </div>
                     <div className="text-right shrink-0">
                       <div className={`font-bold text-sm ${s.text}`}>
-                        {Number(item.precio_unitario || 0).toFixed(2)}
+                        ${Number(item.precio_unitario || 0).toFixed(2)}
                       </div>
                       {sp != null && (
                         <div className={`text-xs font-semibold mt-0.5 ${s.text}`}>
@@ -236,6 +454,25 @@ export default function AnalisisPage() {
               )
             })}
           </div>
+        </div>
+      )}
+
+      {/* ── Botón fijo al fondo ── */}
+      {data && (
+        <div className="mt-12 pt-8 border-t border-gray-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div>
+            <p className="text-gray-400 text-sm font-medium">¿Querés ver cómo se conectan los contratos?</p>
+            <p className="text-gray-600 text-xs mt-0.5">Red interactiva de empresas y entidades públicas</p>
+          </div>
+          <a
+            href="/grafo.html"
+            className="inline-flex items-center gap-2.5 px-6 py-3 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl transition-all shadow-lg shadow-red-500/25 hover:shadow-red-500/40 text-sm shrink-0"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+            </svg>
+            Ver grafo de contratos
+          </a>
         </div>
       )}
     </main>

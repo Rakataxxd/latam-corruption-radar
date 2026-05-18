@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #111; padding: 30px; }
+  .header { text-align: center; border-bottom: 2px solid #003087; padding-bottom: 12px; margin-bottom: 16px; }
+  .header h1 { font-size: 13px; font-weight: bold; color: #003087; text-transform: uppercase; }
+  .header h2 { font-size: 11px; color: #555; margin-top: 3px; }
+  .logo-row { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 8px; }
+  .logo-circle { width: 52px; height: 52px; border-radius: 50%; background: #003087; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 10px; text-align: center; line-height: 1.2; }
+  .doc-info { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .info-box { border: 1px solid #ccc; padding: 8px 10px; border-radius: 3px; }
+  .info-box label { font-size: 9px; text-transform: uppercase; color: #666; display: block; margin-bottom: 2px; }
+  .info-box span { font-weight: bold; font-size: 11px; }
+  .section-title { background: #003087; color: white; padding: 5px 10px; font-weight: bold; font-size: 10px; text-transform: uppercase; margin: 14px 0 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  thead tr { background: #e8eef7; }
+  th { padding: 6px 8px; text-align: left; border: 1px solid #b0bfcf; font-size: 9px; text-transform: uppercase; }
+  td { padding: 5px 8px; border: 1px solid #d0d8e4; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f9fc; }
+  .num { text-align: right; }
+  .total-row td { font-weight: bold; background: #e8eef7; }
+  .grand-total td { font-weight: bold; background: #003087; color: white; font-size: 12px; }
+  .footer { margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+  .firma { border-top: 1px solid #333; margin-top: 40px; padding-top: 4px; text-align: center; font-size: 9px; color: #444; }
+  .nota { margin-top: 14px; font-size: 9px; color: #666; border-top: 1px dashed #ccc; padding-top: 8px; }
+  .stamp { display: inline-block; border: 2px solid #c00; color: #c00; padding: 4px 10px; font-weight: bold; font-size: 10px; transform: rotate(-8deg); margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo-row">
+    <div class="logo-circle">MIDES<br>GT</div>
+    <div>
+      <h1>Ministerio de Desarrollo Social</h1>
+      <h2>República de Guatemala — Dirección de Administración y Finanzas</h2>
+      <h2>Unidad de Adquisiciones y Contrataciones Institucional (UACI)</h2>
+    </div>
+  </div>
+  <div style="font-size:10px; margin-top:6px;">
+    <strong>COTIZACIÓN DE BIENES Y SERVICIOS</strong> &nbsp;|&nbsp; Modalidad: Compra Directa &nbsp;|&nbsp; Guatecompras NOG: <strong>4581290</strong>
+  </div>
+</div>
+
+<div class="doc-info">
+  <div class="info-box">
+    <label>Proveedor / Empresa</label>
+    <span>SOLUCIONES TECNOLÓGICAS INTEGRADAS S.A.</span><br>
+    <span style="font-weight:normal; font-size:10px;">NIT: 98432107-K &nbsp;|&nbsp; Tel: (502) 2334-5678</span><br>
+    <span style="font-weight:normal; font-size:10px;">10 Calle 12-45, Zona 10, Ciudad de Guatemala</span>
+  </div>
+  <div class="info-box">
+    <label>Entidad Compradora</label>
+    <span>MIDES — Ministerio de Desarrollo Social</span><br>
+    <span style="font-weight:normal; font-size:10px;">7a Avenida 3-33, Zona 13, Ciudad de Guatemala</span><br>
+    <span style="font-weight:normal; font-size:10px;">Ref. Expediente: DAF-UC-2024-0847</span>
+  </div>
+  <div class="info-box">
+    <label>Fecha de Cotización</label>
+    <span>15 de mayo de 2024</span><br>
+    <label style="margin-top:6px;">Vigencia de Precios</label>
+    <span>30 días calendario</span>
+  </div>
+  <div class="info-box">
+    <label>Objeto de la Compra</label>
+    <span>Equipamiento de oficina y materiales de cómputo para las sedes departamentales del MIDES en Alta Verapaz, Quiché e Izabal</span>
+  </div>
+</div>
+
+<div class="section-title">Desglose de Ítems Cotizados</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:4%">No.</th>
+      <th style="width:35%">Descripción del bien o servicio</th>
+      <th style="width:8%">Unidad de medida</th>
+      <th style="width:7%" class="num">Cantidad</th>
+      <th style="width:13%" class="num">Precio unitario (Q.)</th>
+      <th style="width:13%" class="num">Precio total (Q.)</th>
+      <th style="width:20%">Especificaciones técnicas</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>Laptop computadora portátil</td>
+      <td>Unidad</td>
+      <td class="num">15</td>
+      <td class="num">8,750.00</td>
+      <td class="num">131,250.00</td>
+      <td>Intel Core i5, 8GB RAM, 256GB SSD, Windows 11 Pro</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>Monitor LED 24 pulgadas</td>
+      <td>Unidad</td>
+      <td class="num">20</td>
+      <td class="num">3,200.00</td>
+      <td class="num">64,000.00</td>
+      <td>Full HD 1080p, HDMI/VGA, incluye base regulable</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>Impresora multifuncional laser</td>
+      <td>Unidad</td>
+      <td class="num">5</td>
+      <td class="num">5,800.00</td>
+      <td class="num">29,000.00</td>
+      <td>Blanco y negro, red WiFi, dúplex automático, 30ppm</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>Teclado inalámbrico USB</td>
+      <td>Unidad</td>
+      <td class="num">20</td>
+      <td class="num">780.00</td>
+      <td class="num">15,600.00</td>
+      <td>Layout español, receptor USB nano, batería incluida</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>Mouse inalámbrico óptico</td>
+      <td>Unidad</td>
+      <td class="num">20</td>
+      <td class="num">620.00</td>
+      <td class="num">12,400.00</td>
+      <td>1600 DPI, receptor USB, scroll de precisión</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>Silla ergonómica de oficina</td>
+      <td>Unidad</td>
+      <td class="num">25</td>
+      <td class="num">2,850.00</td>
+      <td class="num">71,250.00</td>
+      <td>Respaldo malla, ajuste lumbar, descansabrazos regulables, ruedas</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>Escritorio ejecutivo melamínico</td>
+      <td>Unidad</td>
+      <td class="num">10</td>
+      <td class="num">3,950.00</td>
+      <td class="num">39,500.00</td>
+      <td>1.20m x 0.60m, con gaveta y archivero inferior, color wengue</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>Resma papel bond carta 75g</td>
+      <td>Resma</td>
+      <td class="num">200</td>
+      <td class="num">95.00</td>
+      <td class="num">19,000.00</td>
+      <td>500 hojas, 8.5 x 11 pulgadas, blancura 92%</td>
+    </tr>
+    <tr>
+      <td>9</td>
+      <td>Cartucho tóner HP LaserJet negro</td>
+      <td>Unidad</td>
+      <td class="num">12</td>
+      <td class="num">1,450.00</td>
+      <td class="num">17,400.00</td>
+      <td>Compatible HP 85A / CF285A, rendimiento 1600 páginas</td>
+    </tr>
+    <tr>
+      <td>10</td>
+      <td>Switch de red 24 puertos Gigabit</td>
+      <td>Unidad</td>
+      <td class="num">3</td>
+      <td class="num">4,200.00</td>
+      <td class="num">12,600.00</td>
+      <td>10/100/1000 Mbps, rack mount 19", administrable</td>
+    </tr>
+    <tr>
+      <td>11</td>
+      <td>UPS regulador de voltaje 1200VA</td>
+      <td>Unidad</td>
+      <td class="num">8</td>
+      <td class="num">2,100.00</td>
+      <td class="num">16,800.00</td>
+      <td>8 tomas, protección supresor picos, autonomía 15min carga completa</td>
+    </tr>
+    <tr>
+      <td>12</td>
+      <td>Servicio de instalación y configuración</td>
+      <td>Global</td>
+      <td class="num">1</td>
+      <td class="num">18,500.00</td>
+      <td class="num">18,500.00</td>
+      <td>Instalación de equipos en 3 sedes, configuración de red y usuarios</td>
+    </tr>
+    <tr class="total-row">
+      <td colspan="5" style="text-align:right;">SUBTOTAL</td>
+      <td class="num">447,300.00</td>
+      <td></td>
+    </tr>
+    <tr class="total-row">
+      <td colspan="5" style="text-align:right;">IVA (12%)</td>
+      <td class="num">53,676.00</td>
+      <td></td>
+    </tr>
+    <tr class="grand-total">
+      <td colspan="5" style="text-align:right;">TOTAL GENERAL</td>
+      <td class="num">Q. 500,976.00</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="nota">
+  <strong>Condiciones:</strong> Precios incluyen entrega en bodegas del MIDES, zona 13. Garantía mínima 12 meses en equipos. Forma de pago: 30 días después de recepción conforme.
+  Los precios indicados están expresados en Quetzales (GTQ) e incluyen todos los impuestos de ley excepto IVA, el cual se detalla por separado.
+</div>
+
+<div class="footer">
+  <div>
+    <div class="firma">Firma y Sello del Proveedor</div>
+    <div style="text-align:center; margin-top:4px; font-size:9px;">Lic. Carlos Mendoza Ruiz<br>Representante Legal<br>Soluciones Tecnológicas Integradas S.A.</div>
+  </div>
+  <div>
+    <div class="firma">Jefe de Adquisiciones UACI</div>
+    <div style="text-align:center; margin-top:4px; font-size:9px;">Ing. María José Ajú Caal<br>UACI — MIDES<br>Código: MIDES-UACI-2024</div>
+  </div>
+  <div>
+    <div class="firma">Vo.Bo. Director Administrativo</div>
+    <div style="text-align:center; margin-top:4px; font-size:9px; color:#888;">(Pendiente de aprobación)</div>
+    <div style="text-align:center;"><span class="stamp">COTIZACIÓN<br>PENDIENTE</span></div>
+  </div>
+</div>
+
+</body>
+</html>

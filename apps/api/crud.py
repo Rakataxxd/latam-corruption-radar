@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, text
+from sqlalchemy import func, desc, text, case
 from models import ObraPublica, Empresa, EmpresaPais, Cotizacion, ScrapingLog
 from datetime import datetime
 
@@ -38,15 +38,19 @@ def list_obras(
             ObraPublica.empresa_id.in_(emp_ids)
         )
 
+    col = getattr(ObraPublica, order_by, ObraPublica.sobreprecio_score)
+    # Contratos de usuarios siempre primero, luego por score desc
+    usuario_primero = case(
+        (ObraPublica.fuente == "usuario_contribucion", 0), else_=1
+    )
     items = (
-        q.order_by(desc(getattr(ObraPublica, order_by, ObraPublica.sobreprecio_score)))
+        q.order_by(usuario_primero, desc(col).nulls_last())
         .offset((page - 1) * page_size)
-        .limit(page_size + 1)  # +1 para saber si hay más páginas
+        .limit(page_size + 1)
         .all()
     )
     has_more = len(items) > page_size
     items = items[:page_size]
-    # Estimación del total sin COUNT(*) costoso
     total = (page - 1) * page_size + len(items) + (page_size if has_more else 0)
 
     # Una sola query para todas las empresas en lugar de N+1
@@ -70,8 +74,8 @@ def list_obras(
             "monto_adjudicado": float(obra.monto_adjudicado) if obra.monto_adjudicado else None,
             "moneda": obra.moneda,
             "fecha_adjudicacion": obra.fecha_adjudicacion,
-            "sobreprecio_score": float(obra.sobreprecio_score) if obra.sobreprecio_score else None,
-            "sobreprecio_pct": float(obra.sobreprecio_pct) if obra.sobreprecio_pct else None,
+            "sobreprecio_score": float(obra.sobreprecio_score) if obra.sobreprecio_score is not None else None,
+            "sobreprecio_pct": float(obra.sobreprecio_pct) if obra.sobreprecio_pct is not None else None,
             "fuente": obra.fuente,
         })
     return result, total
@@ -132,6 +136,57 @@ def get_global_stats(db: Session) -> dict:
         "paises":             [r[0] for r in paises_rows],
         "avg_sobreprecio":    float(avg_sp) if avg_sp else 0,
         "obras_alto_riesgo":  obras_riesgo,
+    }
+
+
+def batch_update_scores(db: Session, pais: str | None = None, solo_sin_score: bool = True) -> dict:
+    """
+    Calcula sobreprecio_score/pct por percentil de categoría para contratos sin ítems.
+    Útil para contratos BID/IDB que no tienen precio_unitario por línea.
+    """
+    from categoria_scoring import score_by_category
+
+    q = db.query(ObraPublica).filter(
+        ~ObraPublica.fuente.in_(["SECOP", "SECOP1"]),
+        ObraPublica.monto_adjudicado > 0,
+    )
+    if solo_sin_score:
+        q = q.filter(ObraPublica.sobreprecio_score == 0)
+    if pais:
+        q = q.filter(ObraPublica.pais == pais.upper())
+
+    obras = q.all()
+
+    # Calcular primero, actualizar después (evita retroalimentación en percentiles)
+    updates: list[tuple[str, float, float]] = []
+    errores = 0
+
+    for obra in obras:
+        try:
+            r = score_by_category(
+                db=db,
+                obra_id=str(obra.id),
+                monto=float(obra.monto_adjudicado),
+                pais=obra.pais,
+                categoria=obra.categoria,
+                genera_ia=False,
+            )
+            if r.n_contratos >= 2:
+                updates.append((str(obra.id), r.score, r.sobreprecio_pct))
+        except Exception:
+            errores += 1
+
+    for obra_id, score, pct in updates:
+        db.query(ObraPublica).filter_by(id=obra_id).update({
+            "sobreprecio_score": score,
+            "sobreprecio_pct": pct,
+        })
+    db.commit()
+
+    return {
+        "procesadas": len(obras),
+        "actualizadas": len(updates),
+        "errores": errores,
     }
 
 

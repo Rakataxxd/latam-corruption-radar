@@ -70,3 +70,9 @@ class StatsResponse(BaseModel):
     paises: list[str]
     avg_sobreprecio: Optional[float]
     obras_alto_riesgo: int
+
+
+class PublicarEnRadarRequest(BaseModel):
+    entidad_compradora: str
+    titulo: Optional[str] = None
+    empresa_nombre: Optional[str] = None

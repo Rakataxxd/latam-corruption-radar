@@ -35,7 +35,6 @@ function buildGraph(obras: any[]): { nodes: Node[]; edges: Edge[]; crossCount: n
   const nodes: Node[] = []
   const edges: Edge[] = []
 
-  // Group obras by empresa key → country
   const empresaMap: Record<string, { nombre: string; paises: Record<string, any[]> }> = {}
   for (const o of obras) {
     if (!o.pais || !CLUSTER[o.pais]) continue
@@ -47,7 +46,6 @@ function buildGraph(obras: any[]): { nodes: Node[]; edges: Edge[]; crossCount: n
     empresaMap[eid].paises[o.pais].push(o)
   }
 
-  // Country label nodes (non-interactive headers)
   for (const [pais, pos] of Object.entries(CLUSTER)) {
     nodes.push({
       id: `country-${pais}`,
@@ -71,7 +69,6 @@ function buildGraph(obras: any[]): { nodes: Node[]; edges: Edge[]; crossCount: n
     })
   }
 
-  // One empresa node per (empresa, country) pair
   const byPais: Record<string, number> = {}
   const nodeIdMap: Record<string, string> = {}
 
@@ -92,12 +89,7 @@ function buildGraph(obras: any[]): { nodes: Node[]; edges: Edge[]; crossCount: n
         id: nodeId,
         type: "default",
         position: pos,
-        data: {
-          label: emp.nombre.length > 22 ? emp.nombre.slice(0, 20) + "…" : emp.nombre,
-          empresa_id,
-          pais,
-          count: obrasInPais.length,
-        },
+        data: { label: emp.nombre.length > 22 ? emp.nombre.slice(0, 20) + "…" : emp.nombre, empresa_id, pais, count: obrasInPais.length },
         style: {
           background: `${color}14`,
           border: `1.5px solid ${color}88`,
@@ -113,7 +105,6 @@ function buildGraph(obras: any[]): { nodes: Node[]; edges: Edge[]; crossCount: n
     }
   }
 
-  // Cross-country edges: same empresa_id in 2+ countries
   let crossCount = 0
   for (const [eid, emp] of Object.entries(empresaMap)) {
     const countries = Object.keys(emp.paises)
@@ -174,7 +165,6 @@ export default function GrafoPage() {
 
   return (
     <div style={{ height: "calc(100vh - 56px)", background: "#030712", position: "relative" }}>
-      {/* Panel de leyenda */}
       <div className="absolute top-4 left-4 z-10 bg-gray-950/90 border border-gray-800 rounded-2xl p-4 w-56 backdrop-blur-sm shadow-2xl">
         <div className="flex items-center gap-2 mb-3">
           <svg className="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -229,8 +219,8 @@ export default function GrafoPage() {
           <Link href="/radar" className="text-xs text-gray-500 hover:text-white transition py-1 rounded hover:bg-white/5 text-center">
             ← Radar
           </Link>
-          <Link href="/mapa" className="text-xs text-gray-500 hover:text-white transition py-1 rounded hover:bg-white/5 text-center">
-            ← Mapa
+          <Link href="/cotizar" className="text-xs text-gray-500 hover:text-white transition py-1 rounded hover:bg-white/5 text-center">
+            ← Analizar
           </Link>
         </div>
       </div>

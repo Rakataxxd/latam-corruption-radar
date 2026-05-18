@@ -8,29 +8,32 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0d0d0d;overflow:hidden;font-family:system-ui,sans-serif;color:#e2e8f0}
 canvas{position:fixed;inset:0;display:block}
-#logo{position:fixed;top:14px;left:14px;display:flex;align-items:center;gap:8px;pointer-events:none}
+#logo-wrap{position:fixed;top:14px;left:14px;display:flex;flex-direction:column;gap:8px}
+#logo{display:flex;align-items:center;gap:8px;pointer-events:none}
+#home-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:rgba(15,23,42,.92);color:#94a3b8;font-size:11px;font-weight:600;cursor:pointer;text-decoration:none;transition:all .15s;width:fit-content}
+#home-btn:hover{background:rgba(30,41,59,.95);color:#e2e8f0;border-color:rgba(255,255,255,.22)}
 #logo-ic{width:30px;height:30px;border-radius:8px;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);display:grid;place-items:center;font-size:14px}
 #logo h1{font-size:12px;font-weight:700;color:#f1f5f9}
 #logo p{font-size:9px;color:#64748b}
-#ctrl{position:fixed;top:14px;right:14px;display:flex;flex-direction:column;gap:6px;width:210px}
+#ctrl{position:fixed;top:14px;right:14px;display:flex;flex-direction:column;gap:8px;width:260px}
 #sw{position:relative}
-#srch{width:100%;padding:7px 10px 7px 30px;background:rgba(15,23,42,.92);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:#e2e8f0;font-size:12px;outline:none}
+#srch{width:100%;padding:10px 14px 10px 36px;background:rgba(15,23,42,.92);border:1px solid rgba(255,255,255,.1);border-radius:10px;color:#e2e8f0;font-size:15px;outline:none}
 #srch:focus{border-color:rgba(99,102,241,.5)}
 #srch::placeholder{color:#475569}
-.sic{position:absolute;left:9px;top:50%;transform:translateY(-50%);width:12px;height:12px;color:#475569;pointer-events:none}
-.btn{padding:6px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(15,23,42,.92);color:#94a3b8;font-size:11px;font-weight:600;cursor:pointer;text-align:left;width:100%;transition:all .15s}
+.sic{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:#475569;pointer-events:none}
+.btn{padding:9px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(15,23,42,.92);color:#94a3b8;font-size:14px;font-weight:600;cursor:pointer;text-align:left;width:100%;transition:all .15s}
 .btn:hover{background:rgba(30,41,59,.95);color:#e2e8f0}
 .btn.on{background:rgba(239,68,68,.12);color:#fca5a5;border-color:rgba(239,68,68,.35)}
-.pais-btns{display:flex;gap:4px;flex-wrap:wrap}
-.pbtn{flex:1;min-width:calc(50% - 2px);padding:5px 6px;border-radius:7px;border:1px solid rgba(255,255,255,.1);background:rgba(15,23,42,.92);color:#94a3b8;font-size:10px;font-weight:600;cursor:pointer;text-align:center;transition:all .15s}
+.pais-btns{display:flex;gap:5px;flex-wrap:wrap}
+.pbtn{flex:1;min-width:calc(50% - 3px);padding:8px 8px;border-radius:9px;border:1px solid rgba(255,255,255,.1);background:rgba(15,23,42,.92);color:#94a3b8;font-size:13px;font-weight:600;cursor:pointer;text-align:center;transition:all .15s}
 .pbtn:hover{background:rgba(30,41,59,.95);color:#e2e8f0}
 .pbtn.on{border-color:rgba(255,255,255,.35);color:#f1f5f9;background:rgba(30,41,59,.95)}
-#stats{position:fixed;bottom:12px;left:12px;display:flex;gap:12px;background:rgba(9,15,30,.88);border:1px solid rgba(255,255,255,.07);border-radius:9px;padding:6px 12px;pointer-events:none}
-.sv{font-size:13px;font-weight:700;color:#f1f5f9}.sl{font-size:8px;color:#475569;margin-top:1px;text-transform:uppercase;letter-spacing:.05em}
-#leg{position:fixed;bottom:12px;right:12px;background:rgba(9,15,30,.88);border:1px solid rgba(255,255,255,.07);border-radius:9px;padding:8px 12px;pointer-events:none}
-.lt{font-size:8px;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
-.leg-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 12px}
-.li{display:flex;align-items:center;gap:5px;font-size:9px;color:#94a3b8}
+#stats{position:fixed;bottom:16px;left:16px;display:flex;gap:16px;background:rgba(9,15,30,.88);border:1px solid rgba(255,255,255,.07);border-radius:11px;padding:10px 18px;pointer-events:none}
+.sv{font-size:18px;font-weight:700;color:#f1f5f9}.sl{font-size:11px;color:#475569;margin-top:1px;text-transform:uppercase;letter-spacing:.05em}
+#leg{position:fixed;bottom:16px;right:16px;background:rgba(9,15,30,.88);border:1px solid rgba(255,255,255,.07);border-radius:11px;padding:12px 16px;pointer-events:none}
+.lt{font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+.leg-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px 16px}
+.li{display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8}
 .ld{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 .lm{width:7px;height:7px;border-radius:50%;border:2px solid #ef4444;flex-shrink:0;animation:mp 1.8s ease-in-out infinite}
 @keyframes mp{0%,100%{opacity:.9}50%{opacity:.15}}
@@ -71,9 +74,15 @@ canvas{position:fixed;inset:0;display:block}
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="logo">
-  <div id="logo-ic">⧁</div>
-  <div><h1>Red de Contratos LATAM</h1><p>CO · CL · GT · SV · 400 nodos</p></div>
+<div id="logo-wrap">
+  <div id="logo">
+    <div id="logo-ic">⧁</div>
+    <div><h1>Red de Contratos LATAM</h1><p>CO · CL · GT · SV · 400 nodos</p></div>
+  </div>
+  <a id="home-btn" href="/">
+    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
+    Volver al inicio
+  </a>
 </div>
 <div id="ctrl">
   <div id="sw">
